@@ -83,11 +83,8 @@ jobs:
 
           UPSTREAM_REPO="OpenStickCommunity/GP2040-CE"
           TARGET_REPO="${{ github.repository }}"
-          RELEASES_JSON="$(mktemp)"
-
-          curl -fsSL "https://api.github.com/repos/${UPSTREAM_REPO}/releases?per_page=100" -o "${RELEASES_JSON}"
-
-          jq -c '.[]' "${RELEASES_JSON}" | while IFS= read -r release; do
+          gh api --paginate "repos/${UPSTREAM_REPO}/releases?per_page=100" --jq '.[] | @base64' | while IFS= read -r release_b64; do
+            release="$(echo "${release_b64}" | base64 --decode)"
             tag_name="$(echo "${release}" | jq -r '.tag_name')"
 
             if gh release view "${tag_name}" --repo "${TARGET_REPO}" > /dev/null 2>&1; then
@@ -110,9 +107,16 @@ jobs:
               extra_args+=(--draft)
             fi
 
-            gh release create "${tag_name}" \
-              --repo "${TARGET_REPO}" \
-              --title "${release_name}" \
-              --notes-file "${notes_file}" \
-              "${extra_args[@]}"
+            if [ "${#extra_args[@]}" -gt 0 ]; then
+              gh release create "${tag_name}" \
+                --repo "${TARGET_REPO}" \
+                --title "${release_name}" \
+                --notes-file "${notes_file}" \
+                "${extra_args[@]}"
+            else
+              gh release create "${tag_name}" \
+                --repo "${TARGET_REPO}" \
+                --title "${release_name}" \
+                --notes-file "${notes_file}"
+            fi
           done
